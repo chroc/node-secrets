@@ -3,7 +3,8 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const ejs = require('ejs');
 const mongoose = require('mongoose');
-const encrypt = require('mongoose-encryption');
+const bcrypt = require('bcryptjs');
+const salt = bcrypt.genSaltSync(10);
 const port = process.env.PORT || 3000;
 
 const app = express();
@@ -13,7 +14,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static('public'));
 
 // Setup DB
-mongoose.connect(`mongodb://localhost:27017/${process.env.DB_NAME}`);
+mongoose.connect(process.env.DB_URL);
 
 const userSchema = new mongoose.Schema({
     email: {
@@ -22,8 +23,6 @@ const userSchema = new mongoose.Schema({
     },
     password: String
 });
-
-userSchema.plugin(encrypt, { secret: process.env.SECRET, encryptedFields: ['password'] });
 
 const User = mongoose.model('User', userSchema);
 
@@ -42,16 +41,19 @@ app.get('/register', (req, res) => {
 });
 
 app.post('/register', (req, res) => {
-    const newUser = new User({
-        email: req.body.username,
-        password: req.body.password
-    });
-    newUser.save((err) => {
-        if(err){
-            console.log(err);
-        }else{
-            res.render('secrets');
-        }
+    bcrypt.hash(req.body.password, salt, function(err, hash) {
+        // Store hash in your password DB.
+        const newUser = new User({
+            email: req.body.username,
+            password: hash
+        });
+        newUser.save((err) => {
+            if(err){
+                console.log(err);
+            }else{
+                res.render('secrets');
+            }
+        });
     });
 });
 
@@ -63,9 +65,11 @@ app.post('/login', (req, res) => {
             console.log(err);
         }else{
             if(user){
-                if(user.password === password){
-                    res.render('secrets');
-                }
+                bcrypt.compare(password, user.password, function(err, result) {
+                    if(result){
+                        res.render('secrets');
+                    }
+                });
             }
         }
     });
